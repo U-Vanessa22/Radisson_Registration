@@ -1,7 +1,19 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ChangeEvent, FormEvent } from 'react'
 import * as XLSX from 'xlsx'
 import './App.css'
+import {
+  ensureWorkspaceMembership,
+  isSupabaseEnabled,
+  getCurrentSession,
+  loadWorkspaceSnapshot,
+  onSupabaseAuthChange,
+  signInWithPassword,
+  signOutSupabaseUser,
+  saveWorkspaceEmployees,
+  saveWorkspacePreferences,
+  saveWorkspaceRegistrations,
+} from './lib/supabase'
 
 const departments = [
   'Front Office',
@@ -51,6 +63,7 @@ type Preferences = {
   officerRole: string
   hotelName: string
   dailyTarget: number
+  workspaceKey: string
 }
 
 const employeeBase: Record<Department, number> = {
@@ -73,6 +86,7 @@ const defaultPreferences: Preferences = {
   officerRole: 'People & Culture',
   hotelName: 'Radisson Blu Hotel',
   dailyTarget: 18,
+  workspaceKey: 'radisson-registration',
 }
 
 const emptyForm = (date: string): RegistrationForm => ({
@@ -355,11 +369,95 @@ function App() {
   const [preferences, setPreferences] = useState<Preferences>(loadPreferences)
   const [isSignedIn, setIsSignedIn] = useState(() => localStorage.getItem('radisson-session') === 'active')
   const [loginName, setLoginName] = useState(preferences.officerName)
+  const [loginEmail, setLoginEmail] = useState('')
   const [loginCode, setLoginCode] = useState('')
   const [employeeSearch, setEmployeeSearch] = useState('')
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('')
   const [registrationNotice, setRegistrationNotice] = useState('')
   const [importNotice, setImportNotice] = useState('')
+  const [syncNotice, setSyncNotice] = useState('')
+  const [syncState, setSyncState] = useState(isSupabaseEnabled() ? 'Connecting to Supabase...' : 'Offline mode')
+
+  useEffect(() => {
+    let cancelled = false
+
+    const bootstrapAuth = async () => {
+      if (!isSupabaseEnabled()) {
+        setIsSignedIn(true)
+        return
+      }
+
+      const session = await getCurrentSession()
+      if (cancelled) {
+        return
+      }
+
+      setIsSignedIn(Boolean(session))
+    }
+
+    const hydrateWorkspace = async () => {
+      if (!isSupabaseEnabled()) {
+        setSyncState('Offline mode')
+        return
+      }
+
+      setSyncState('Loading workspace data from Supabase...')
+
+      try {
+        const snapshot = await loadWorkspaceSnapshot(preferences.workspaceKey)
+        if (cancelled || !snapshot) {
+          return
+        }
+
+        if (snapshot.preferences) {
+          const nextPreferences = { ...preferences, ...snapshot.preferences } as Preferences
+          setPreferences(nextPreferences)
+          localStorage.setItem('radisson-registration-preferences', JSON.stringify(nextPreferences))
+          setLoginName(nextPreferences.officerName)
+        }
+
+        if (snapshot.employees.length > 0) {
+          setEmployees(snapshot.employees as Employee[])
+          localStorage.setItem('radisson-employee-directory', JSON.stringify(snapshot.employees))
+        }
+
+        if (snapshot.registrations.length > 0) {
+          setRegistrations(snapshot.registrations as Registration[])
+          localStorage.setItem('radisson-daily-registrations', JSON.stringify(snapshot.registrations))
+        }
+
+        setSyncState('Connected to Supabase')
+      } catch (error) {
+        if (cancelled) {
+          return
+        }
+
+        console.error('Supabase sync failed', error)
+        setSyncState('Supabase sync failed, using local storage')
+      }
+    }
+
+    void bootstrapAuth()
+    void hydrateWorkspace()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isSupabaseEnabled()) {
+      return
+    }
+
+    const subscription = onSupabaseAuthChange((_event, session) => {
+      setIsSignedIn(Boolean(session))
+    })
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [])
 
   const dailyRegistrations = useMemo(
     () => registrations.filter((item) => item.date === selectedDate),
@@ -438,16 +536,28 @@ function App() {
   const saveRegistrations = (nextRegistrations: Registration[]) => {
     setRegistrations(nextRegistrations)
     localStorage.setItem('radisson-daily-registrations', JSON.stringify(nextRegistrations))
+    void saveWorkspaceRegistrations(preferences.workspaceKey, nextRegistrations).catch((error) => {
+      console.error('Failed to sync registrations to Supabase', error)
+      setSyncNotice('Registrations saved locally. Supabase sync failed.')
+    })
   }
 
-  const saveEmployees = (nextEmployees: Employee[]) => {
+  const saveEmployees = (nextEmployees: Employee[], sourceFile?: File, sourceFileName?: string) => {
     setEmployees(nextEmployees)
     localStorage.setItem('radisson-employee-directory', JSON.stringify(nextEmployees))
+    void saveWorkspaceEmployees(preferences.workspaceKey, nextEmployees, sourceFileName, sourceFile).catch((error) => {
+      console.error('Failed to sync employees to Supabase', error)
+      setSyncNotice('Employees saved locally. Supabase sync failed.')
+    })
   }
 
   const savePreferences = (nextPreferences: Preferences) => {
     setPreferences(nextPreferences)
     localStorage.setItem('radisson-registration-preferences', JSON.stringify(nextPreferences))
+    void saveWorkspacePreferences(nextPreferences).catch((error) => {
+      console.error('Failed to sync preferences to Supabase', error)
+      setSyncNotice('Preferences saved locally. Supabase sync failed.')
+    })
   }
 
   const updatePreference = <Key extends keyof Preferences>(key: Key, value: Preferences[Key]) => {
@@ -476,39 +586,82 @@ function App() {
 
     const data = await file.arrayBuffer()
     const workbook = XLSX.read(data, { type: 'array' })
-    const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
-    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet, {
-      defval: '',
+    const rows = workbook.SheetNames.flatMap((sheetName) => {
+      const sheet = workbook.Sheets[sheetName]
+      return XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+        defval: '',
+      })
     })
     const importedEmployees = parseEmployeeRows(rows)
 
     if (importedEmployees.length === 0) {
-      setImportNotice('No employees were found. Check that the sheet has a name column.')
+      const firstSheetName = workbook.SheetNames[0] ?? 'Unknown sheet'
+      const firstSheetRows = workbook.SheetNames.length > 0
+        ? XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[firstSheetName], {
+            defval: '',
+          })
+        : []
+      const detectedColumns = firstSheetRows[0] ? Object.keys(firstSheetRows[0]).join(', ') : 'No columns detected'
+
+      setImportNotice(
+        `No employees were found. We looked through ${workbook.SheetNames.length} sheet(s). Detected columns: ${detectedColumns}. Expected a name column such as Full Name or Employee Name.`,
+      )
       event.target.value = ''
       return
     }
 
-    saveEmployees(importedEmployees)
+    saveEmployees(importedEmployees, file, file.name)
     setImportNotice(`${importedEmployees.length} employees imported from ${file.name}.`)
     event.target.value = ''
   }
 
   const handleLogin = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const nextPreferences = {
-      ...preferences,
-      officerName: loginName.trim() || 'HR Officer',
+    const signIn = async () => {
+      if (!isSupabaseEnabled()) {
+        const nextPreferences = {
+          ...preferences,
+          officerName: loginName.trim() || 'HR Officer',
+        }
+        savePreferences(nextPreferences)
+        localStorage.setItem('radisson-session', 'active')
+        setIsSignedIn(true)
+        setLoginCode('')
+        return
+      }
+
+      const nextEmail = loginEmail.trim().toLowerCase()
+      if (!nextEmail || !loginCode.trim()) {
+        setSyncNotice('Enter both email and password to sign in.')
+        return
+      }
+
+      const result = await signInWithPassword(nextEmail, loginCode)
+      if (result.error) {
+        throw result.error
+      }
+
+      await ensureWorkspaceMembership(preferences.workspaceKey, preferences.hotelName)
+      setLoginCode('')
+      setIsSignedIn(true)
     }
-    savePreferences(nextPreferences)
-    localStorage.setItem('radisson-session', 'active')
-    setIsSignedIn(true)
-    setLoginCode('')
+
+    void signIn().catch((error) => {
+      console.error('Sign in failed', error)
+      setSyncNotice('Sign in failed. Check your Supabase email and password.')
+    })
   }
 
   const handleLogout = () => {
-    localStorage.removeItem('radisson-session')
-    setIsSignedIn(false)
-    setPage('home')
+    void signOutSupabaseUser()
+      .catch((error) => {
+        console.error('Sign out failed', error)
+      })
+      .finally(() => {
+        localStorage.removeItem('radisson-session')
+        setIsSignedIn(false)
+        setPage('home')
+      })
   }
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -591,28 +744,43 @@ function App() {
             <p className="eyebrow">Secure access</p>
             <h2>Officer login</h2>
           </div>
+          {isSupabaseEnabled() ? (
+            <label>
+              Email
+              <input
+                required
+                type="email"
+                value={loginEmail}
+                onChange={(event) => setLoginEmail(event.target.value)}
+                placeholder="name@hotel.com"
+              />
+            </label>
+          ) : null}
           <label>
             Officer name
             <input
-              required
+              required={!isSupabaseEnabled()}
               value={loginName}
               onChange={(event) => setLoginName(event.target.value)}
               placeholder="Enter your name"
             />
           </label>
           <label>
-            Access code
+            {isSupabaseEnabled() ? 'Password' : 'Access code'}
             <input
               required
               type="password"
               value={loginCode}
               onChange={(event) => setLoginCode(event.target.value)}
-              placeholder="Enter access code"
+              placeholder={isSupabaseEnabled() ? 'Enter password' : 'Enter access code'}
             />
           </label>
           <button type="submit" className="primary-button">
             Sign in
           </button>
+          <p className="login-note">
+            {isSupabaseEnabled() ? syncState : 'Offline mode'}
+          </p>
           {/*<p className="login-note">Demo mode accepts any access code.</p>*/}
         </form>
       </main>
@@ -689,6 +857,8 @@ function App() {
             </button>
           </div>
         </header>
+
+        {syncNotice ? <p className="workspace-sync-notice">{syncNotice}</p> : null}
 
         {page === 'home' ? (
           <section className="page-grid">
@@ -1020,6 +1190,14 @@ function App() {
                     onChange={(event) =>
                       updatePreference('dailyTarget', Math.max(1, Number(event.target.value)))
                     }
+                  />
+                </label>
+                <label>
+                  Workspace code
+                  <input
+                    value={preferences.workspaceKey}
+                    onChange={(event) => updatePreference('workspaceKey', event.target.value.trim())}
+                    placeholder="Shared hotel workspace code"
                   />
                 </label>
               </div>

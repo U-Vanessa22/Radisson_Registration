@@ -642,6 +642,13 @@ label {
   font-weight: 800;
 }
 
+.login-note,
+.workspace-sync-notice {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 .app-shell[data-theme='dark'] .primary-button,
 .auth-page[data-theme='dark'] .primary-button {
   color: #101821;

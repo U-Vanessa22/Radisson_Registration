@@ -14,6 +14,7 @@ Radisson Registration is a hotel staff registration dashboard built with React, 
 - Employee directory import from Excel or CSV files
 - Settings for theme mode, officer identity, hotel name, and daily target
 - Local persistence with `localStorage` so data stays on the same browser
+- Supabase backend sync for shared employee data, registrations, and uploaded source files when configured
 
 ## Tech Stack
 
@@ -21,6 +22,7 @@ Radisson Registration is a hotel staff registration dashboard built with React, 
 - TypeScript
 - Vite
 - `xlsx` for spreadsheet import and report generation
+- `@supabase/supabase-js` for backend and storage sync
 
 ## Project Structure
 
@@ -28,6 +30,7 @@ Radisson Registration is a hotel staff registration dashboard built with React, 
 - `Reg_Project/src/App.css` contains the styling for the dashboard and login view
 - `Reg_Project/src/main.tsx` bootstraps the React app
 - `Reg_Project/index.html` is the Vite entry point
+- `supabase/schema.sql` contains the database tables and storage bucket setup
 
 ## Getting Started
 
@@ -35,6 +38,7 @@ Radisson Registration is a hotel staff registration dashboard built with React, 
 
 - Node.js 18 or newer
 - npm
+- A Supabase project if you want shared storage and multi-user sync
 
 ### Install Dependencies
 
@@ -42,6 +46,18 @@ Radisson Registration is a hotel staff registration dashboard built with React, 
 cd Reg_Project
 npm install
 ```
+
+### Configure Supabase
+
+Copy [.env.example](.env.example) to `.env.local` and fill in your Supabase project values.
+
+```bash
+VITE_SUPABASE_URL=...
+VITE_SUPABASE_ANON_KEY=...
+VITE_SUPABASE_BUCKET=employee-imports
+```
+
+Then run the SQL in [supabase/schema.sql](supabase/schema.sql) inside the Supabase SQL editor.
 
 ### Run the App Locally
 
@@ -80,7 +96,7 @@ npm run lint
 
 ## Data Storage
 
-The app stores registrations, employee data, preferences, and session state in the browser using `localStorage`. Clearing browser storage will reset the app to an empty state.
+The app still keeps a local cache in `localStorage`, but when Supabase is configured it also syncs employee data, registrations, preferences, and uploaded source files to the shared backend. That makes reports available from a central PostgreSQL database instead of only the current browser.
 
 ## Notes
 
