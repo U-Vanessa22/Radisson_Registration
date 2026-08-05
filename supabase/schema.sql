@@ -53,7 +53,6 @@ create table if not exists public.registrations (
   department text not null,
   role text not null,
   phone text not null default '',
-  shift text not null,
   date date not null,
   registered_at text not null,
   created_at timestamptz not null default now(),

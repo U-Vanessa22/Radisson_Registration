@@ -22,7 +22,6 @@ type RegistrationRecord = {
   department: string
   role: string
   phone: string
-  shift: string
   date: string
   registered_at: string
 }
@@ -61,7 +60,6 @@ type RegistrationInput = {
   department: string
   role: string
   phone: string
-  shift: string
   date: string
   registeredAt: string
 }
@@ -199,7 +197,6 @@ export async function loadWorkspaceSnapshot(workspaceKey: string) {
       department: item.department as string,
       role: item.role as string,
       phone: item.phone as string,
-      shift: item.shift as string,
       date: item.date as string,
       registeredAt: item.registered_at as string,
     })),
@@ -307,7 +304,6 @@ export async function saveWorkspaceRegistrations(workspaceKey: string, registrat
     department: registration.department,
     role: registration.role,
     phone: registration.phone,
-    shift: registration.shift,
     date: registration.date,
     registered_at: registration.registeredAt,
   }))

@@ -40,7 +40,6 @@ type Registration = {
   department: Department
   role: string
   phone: string
-  shift: string
   date: string
   registeredAt: string
 }
@@ -94,7 +93,6 @@ const emptyForm = (date: string): RegistrationForm => ({
   department: 'Front Office',
   role: '',
   phone: '',
-  shift: 'Morning',
   date,
 })
 
@@ -236,7 +234,6 @@ function buildExcelReport(registrations: Registration[], date: string, preferenc
           <td>${escapeHtml(item.fullName)}</td>
           <td>${escapeHtml(item.department)}</td>
           <td>${escapeHtml(item.role)}</td>
-          <td>${escapeHtml(item.shift)}</td>
           <td>${escapeHtml(item.phone)}</td>
           <td>${escapeHtml(item.registeredAt)}</td>
         </tr>`,
@@ -268,7 +265,6 @@ function buildExcelReport(registrations: Registration[], date: string, preferenc
               <th>Full name</th>
               <th>Department</th>
               <th>Role</th>
-              <th>Shift</th>
               <th>Phone</th>
               <th>Registered at</th>
             </tr>
@@ -286,10 +282,10 @@ function buildPdfReport(registrations: Registration[], date: string, preferences
     `Prepared by: ${preferences.officerName}`,
     `Total registrations: ${registrations.length}`,
     '',
-    'Employee ID | Name | Department | Role | Shift | Time',
+    'Employee ID | Name | Department | Role | Time',
     ...registrations.map(
       (item) =>
-        `${item.employeeId ?? '-'} | ${item.fullName} | ${item.department} | ${item.role || 'Team Member'} | ${item.shift} | ${item.registeredAt}`,
+        `${item.employeeId ?? '-'} | ${item.fullName} | ${item.department} | ${item.role || 'Team Member'} | ${item.registeredAt}`,
     ),
   ]
 
@@ -372,6 +368,7 @@ function App() {
   const [loginEmail, setLoginEmail] = useState('')
   const [loginCode, setLoginCode] = useState('')
   const [employeeSearch, setEmployeeSearch] = useState('')
+  const [employeeSearchType, setEmployeeSearchType] = useState<'all' | 'name' | 'department'>('all')
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('')
   const [registrationNotice, setRegistrationNotice] = useState('')
   const [importNotice, setImportNotice] = useState('')
@@ -490,6 +487,18 @@ function App() {
       return employees.slice(0, 5)
     }
 
+    if (employeeSearchType === 'name') {
+      return employees
+        .filter((employee) => employee.fullName.toLowerCase().includes(query))
+        .slice(0, 6)
+    }
+
+    if (employeeSearchType === 'department') {
+      return employees
+        .filter((employee) => employee.department.toLowerCase().includes(query))
+        .slice(0, 6)
+    }
+
     return employees
       .filter((employee) =>
         [employee.employeeId, employee.fullName, employee.department, employee.role]
@@ -498,7 +507,7 @@ function App() {
           .includes(query),
       )
       .slice(0, 6)
-  }, [employeeSearch, employees])
+  }, [employeeSearch, employeeSearchType, employees])
 
   const totalEmployees = departmentTotals.reduce((sum, item) => sum + item.total, 0)
   const busiestDepartment = departmentTotals.reduce((winner, item) =>
@@ -576,6 +585,10 @@ function App() {
       phone: employee.phone,
     })
     setRegistrationNotice('')
+  }
+
+  const handleSearchClick = () => {
+    setEmployeeSearch((s) => s.trim())
   }
 
   const handleEmployeeImport = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -963,27 +976,74 @@ function App() {
               <div className="employee-picker">
                 <label>
                   Search employee database
-                  <input
-                    value={employeeSearch}
-                    onChange={(event) => {
-                      setEmployeeSearch(event.target.value)
-                      setSelectedEmployeeId('')
-                    }}
-                    placeholder="Search by name, ID, department, or role"
-                  />
+                  <div className="search-row">
+                    <input
+                      value={employeeSearch}
+                      onChange={(event) => {
+                        setEmployeeSearch(event.target.value)
+                        setSelectedEmployeeId('')
+                      }}
+                      placeholder="Search by name, ID, department, or role"
+                    />
+                    <select
+                      value={employeeSearchType}
+                      onChange={(e) => setEmployeeSearchType(e.target.value as any)}
+                      aria-label="Search by"
+                    >
+                      <option value="all">All</option>
+                      <option value="name">Display name</option>
+                      <option value="department">Department</option>
+                    </select>
+                    <button type="button" className="quiet-button" onClick={handleSearchClick}>
+                      Search
+                    </button>
+                  </div>
                 </label>
                 <div className="employee-results">
-                  {filteredEmployees.map((employee) => (
-                    <button
-                      type="button"
-                      key={employee.employeeId}
-                      onClick={() => applyEmployee(employee)}
-                    >
-                      <span>{employee.employeeId}</span>
-                      <strong>{employee.fullName}</strong>
-                      <small>{employee.department}</small>
-                    </button>
-                  ))}
+                  {filteredEmployees.map((employee, idx) => {
+                    const resultNumber = idx + 1
+                    const isRegistered = registrations.some(
+                      (r) => r.date === selectedDate && r.employeeId === employee.employeeId,
+                    )
+
+                    return (
+                      <div key={employee.employeeId} className="employee-result-row">
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={isRegistered}
+                            onChange={() => {
+                              // toggle registration for this employee for the selected date
+                              if (isRegistered) {
+                                const remaining = registrations.filter(
+                                  (r) => !(r.date === selectedDate && r.employeeId === employee.employeeId),
+                                )
+                                saveRegistrations(remaining)
+                              } else {
+                                const nextRegistration: Registration = {
+                                  id: crypto.randomUUID(),
+                                  employeeId: employee.employeeId,
+                                  fullName: employee.fullName,
+                                  department: employee.department,
+                                  role: employee.role,
+                                  phone: employee.phone,
+                                  date: selectedDate,
+                                  registeredAt: getCurrentTime(),
+                                }
+                                saveRegistrations([nextRegistration, ...registrations])
+                              }
+                            }}
+                          />
+                        </label>
+
+                        <div className="result-index">{resultNumber}</div>
+                        <button type="button" onClick={() => applyEmployee(employee)}>
+                          <strong>{employee.fullName}</strong>
+                          <small>{employee.department}</small>
+                        </button>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
 
@@ -1030,18 +1090,6 @@ function App() {
                     placeholder="+250 ..."
                   />
                 </label>
-                <label>
-                  Shift
-                  <select
-                    value={form.shift}
-                    onChange={(event) => setForm({ ...form, shift: event.target.value })}
-                  >
-                    <option>Morning</option>
-                    <option>Afternoon</option>
-                    <option>Night</option>
-                    <option>Full day</option>
-                  </select>
-                </label>
               </div>
 
               <label>
@@ -1083,7 +1131,6 @@ function App() {
                       <th>Name</th>
                       <th>Department</th>
                       <th>Role</th>
-                      <th>Shift</th>
                       <th>Time</th>
                       <th>Action</th>
                     </tr>
@@ -1095,7 +1142,6 @@ function App() {
                         <td>{item.fullName}</td>
                         <td>{item.department}</td>
                         <td>{item.role}</td>
-                        <td>{item.shift}</td>
                         <td>{item.registeredAt}</td>
                         <td>
                           <button
