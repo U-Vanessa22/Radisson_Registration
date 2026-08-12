@@ -553,7 +553,7 @@ function App() {
   const saveRegistrations = (nextRegistrations: Registration[]) => {
     setRegistrations(nextRegistrations)
     localStorage.setItem('radisson-daily-registrations', JSON.stringify(nextRegistrations))
-    void saveWorkspaceRegistrations(preferences.workspaceKey, RegistrationInput).catch((error) => {
+    void saveWorkspaceRegistrations(preferences.workspaceKey, nextRegistrations).catch((error) => {
       console.error('Failed to sync registrations to Supabase', error)
       setSyncNotice('Registrations saved locally. Supabase sync failed.')
     })
@@ -562,7 +562,7 @@ function App() {
   const saveEmployees = (nextEmployees: Employee[], sourceFile?: File, sourceFileName?: string) => {
     setEmployees(nextEmployees)
     localStorage.setItem('radisson-employee-directory', JSON.stringify(nextEmployees))
-    void saveWorkspaceEmployees(preferences.workspaceKey, EmployeesInput, sourceFileName, sourceFile).catch((error) => {
+    void saveWorkspaceEmployees(preferences.workspaceKey, Employees, sourceFileName, sourceFile).catch((error) => {
       console.error('Failed to sync employees to Supabase', error)
       setSyncNotice('Employees saved locally. Supabase sync failed.')
     })
