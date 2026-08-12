@@ -21,12 +21,17 @@ const departments = [
   'Food & Beverage',
   'Kitchen',
   'Finance',
-  'Human Resources',
+  'People and Culture',
   'Sales & Marketing',
   'Engineering',
   'Security',
   'Spa & Leisure',
-  'Casuals and Trainees'
+  'Casuals and Trainees',
+  'JOTETE',
+  'PTS',
+  'FCC',
+  'OTIS',
+  'IT',
 ] as const
 
 type Department = (typeof departments)[number]
@@ -71,12 +76,17 @@ const employeeBase: Record<Department, number> = {
   'Food & Beverage': 80,
   Kitchen: 90,
   Finance: 20,
-  'Human Resources': 6,
+  'People and Culture': 6,
   'Sales & Marketing': 14,
   Engineering: 50,
   Security: 45,
   'Spa & Leisure': 7,
   'Casuals and Trainees': 15,
+  'JOTETE': 10,
+  'PTS': 25,
+  'FCC': 20,
+  'OTIS': 15,
+  'IT': 12,
 }
 
 const defaultPreferences: Preferences = {
