@@ -43,10 +43,10 @@ type Registration = {
   employeeId?: string
   fullName: string
   department: Department
-  role: string
   phone: string
   date: string
   registeredAt: string
+  /* role: string */
 }
 
 type RegistrationForm = Omit<Registration, 'id' | 'registeredAt'>
@@ -55,7 +55,7 @@ type Employee = {
   employeeId: string
   fullName: string
   department: Department
-  role: string
+  /* role: string */
   phone: string
   email: string
   status: string
@@ -101,7 +101,7 @@ const defaultPreferences: Preferences = {
 const emptyForm = (date: string): RegistrationForm => ({
   fullName: '',
   department: 'Front Office',
-  role: '',
+ /* role: '',*/
   phone: '',
   date,
 })
@@ -213,7 +213,7 @@ function parseEmployeeRows(rows: Record<string, unknown>[]) {
           `EMP-${String(index + 1).padStart(4, '0')}`,
         fullName,
         department: normalizeDepartment(getCell(row, ['Department', 'Dept', 'Division'])),
-        role: getCell(row, ['Role', 'Position', 'Job Title', 'Title']) || 'Team Member',
+        /*role: getCell(row, ['Role', 'Position', 'Job Title', 'Title']) || 'Team Member',*/
         phone: getCell(row, ['Phone', 'Telephone', 'Mobile', 'Contact']),
         email: getCell(row, ['Email', 'Email Address', 'Work Email']),
         status: getCell(row, ['Status', 'Employee Status']) || 'Active',
@@ -243,7 +243,6 @@ function buildExcelReport(registrations: Registration[], date: string, preferenc
           <td>${escapeHtml(item.employeeId ?? '')}</td>
           <td>${escapeHtml(item.fullName)}</td>
           <td>${escapeHtml(item.department)}</td>
-          <td>${escapeHtml(item.role)}</td>
           <td>${escapeHtml(item.phone)}</td>
           <td>${escapeHtml(item.registeredAt)}</td>
         </tr>`,
@@ -274,7 +273,6 @@ function buildExcelReport(registrations: Registration[], date: string, preferenc
               <th>Employee ID</th>
               <th>Full name</th>
               <th>Department</th>
-              <th>Role</th>
               <th>Phone</th>
               <th>Registered at</th>
             </tr>
@@ -292,10 +290,10 @@ function buildPdfReport(registrations: Registration[], date: string, preferences
     `Prepared by: ${preferences.officerName}`,
     `Total registrations: ${registrations.length}`,
     '',
-    'Employee ID | Name | Department | Role | Time',
+    'Employee ID | Name | Department | Time',
     ...registrations.map(
       (item) =>
-        `${item.employeeId ?? '-'} | ${item.fullName} | ${item.department} | ${item.role || 'Team Member'} | ${item.registeredAt}`,
+        `${item.employeeId ?? '-'} | ${item.fullName} | ${item.department} || 'Team Member'} | ${item.registeredAt}`,
     ),
   ]
 
@@ -511,7 +509,7 @@ function App() {
 
     return employees
       .filter((employee) =>
-        [employee.employeeId, employee.fullName, employee.department, employee.role]
+        [employee.employeeId, employee.fullName, employee.department, {/*employee.role*/}]
           .join(' ')
           .toLowerCase()
           .includes(query),
@@ -591,7 +589,7 @@ function App() {
       employeeId: employee.employeeId,
       fullName: employee.fullName,
       department: employee.department,
-      role: employee.role,
+      /*role: employee.role,*/
       phone: employee.phone,
     })
     setRegistrationNotice('')
@@ -872,7 +870,7 @@ function App() {
               <span>{preferences.officerName.slice(0, 1).toUpperCase()}</span>
               <div>
                 <strong>{preferences.officerName}</strong>
-                <p>{preferences.officerRole}</p>
+                {/*<p>{preferences.officerRole}</p>*/}
               </div>
             </div>
             <button type="button" className="quiet-button" onClick={handleLogout}>
@@ -993,7 +991,7 @@ function App() {
                         setEmployeeSearch(event.target.value)
                         setSelectedEmployeeId('')
                       }}
-                      placeholder="Search by name, ID, department, or role"
+                      placeholder="Search by name, ID, department"
                     />
                     <select
                       value={employeeSearchType}
@@ -1035,7 +1033,7 @@ function App() {
                                   employeeId: employee.employeeId,
                                   fullName: employee.fullName,
                                   department: employee.department,
-                                  role: employee.role,
+                                 /* role: employee.role,*/
                                   phone: employee.phone,
                                   date: selectedDate,
                                   registeredAt: getCurrentTime(),
@@ -1081,7 +1079,7 @@ function App() {
                 </select>
               </label>
 
-              <label>
+              {/*<label>
                 Role
                 <input
                   required
@@ -1089,7 +1087,7 @@ function App() {
                   onChange={(event) => setForm({ ...form, role: event.target.value })}
                   placeholder="Example: Receptionist"
                 />
-              </label>
+              </label>*/}
 
               <div className="form-row">
                 <label>
@@ -1151,7 +1149,7 @@ function App() {
                         <td>{item.employeeId ?? '-'}</td>
                         <td>{item.fullName}</td>
                         <td>{item.department}</td>
-                        <td>{item.role}</td>
+                        {/*<td>{item.role}</td>*/}
                         <td>{item.registeredAt}</td>
                         <td>
                           <button
