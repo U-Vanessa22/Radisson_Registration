@@ -1228,13 +1228,13 @@ function App() {
                     onChange={(event) => updatePreference('officerName', event.target.value)}
                   />
                 </label>
-                <label>
+                {/*<label>
                   Officer role
                   <input
                     value={preferences.officerRole}
                     onChange={(event) => updatePreference('officerRole', event.target.value)}
                   />
-                </label>
+                </label>*/ }
                 <label>
                   Daily target
                   <input
@@ -1279,7 +1279,7 @@ function App() {
                   <div key={employee.employeeId}>
                     <span>{employee.employeeId}</span>
                     <strong>{employee.fullName}</strong>
-                    <p>{employee.department} - {employee.role}</p>
+                    {/*<p>{employee.department} - {employee.role}</p>*/}
                   </div>
                 ))}
               </div>
