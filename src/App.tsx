@@ -15,7 +15,7 @@ import {
   saveWorkspaceRegistrations,
 } from './lib/supabase'
 
-const departments = [
+const defaultDepartments = [
   'Front Office',
   'Housekeeping',
   'Food & Beverage',
@@ -32,9 +32,12 @@ const departments = [
   'FCC',
   'OTIS',
   'IT',
+  'KCC',
+  'Garden',
+  'ISCO',
 ] as const
 
-type Department = (typeof departments)[number]
+type Department = string
 type Page = 'home' | 'registrations' | 'settings'
 type Theme = 'light' | 'dark'
 
@@ -70,7 +73,7 @@ type Preferences = {
   workspaceKey: string
 }
 
-const employeeBase: Record<Department, number> = {
+const employeeBase: Record<string, number> = {
   'Front Office': 30,
   Housekeeping: 60,
   'Food & Beverage': 80,
@@ -87,6 +90,9 @@ const employeeBase: Record<Department, number> = {
   'FCC': 20,
   'OTIS': 15,
   'IT': 12,
+  'KCC': 80,
+  'Garden': 40,
+  'ISCO': 40,
 }
 
 const defaultPreferences: Preferences = {
@@ -97,6 +103,15 @@ const defaultPreferences: Preferences = {
   dailyTarget: 18,
   workspaceKey: 'radisson-registration',
 }
+
+const emptyEmployee = (department: string = defaultDepartments[0]): Employee => ({
+  employeeId: '',
+  fullName: '',
+  department,
+  phone: '',
+  email: '',
+  status: 'Active',
+})
 
 const emptyForm = (date: string): RegistrationForm => ({
   fullName: '',
@@ -126,15 +141,6 @@ function formatDate(value: string) {
     day: 'numeric',
     year: 'numeric',
   }).format(new Date(`${value}T00:00:00`))
-}
-
-function escapeHtml(value: string) {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;')
 }
 
 function escapePdfText(value: string) {
@@ -182,6 +188,22 @@ function loadEmployees() {
   }
 }
 
+function loadDepartments() {
+  const saved = localStorage.getItem('radisson-departments')
+  if (!saved) {
+    return [...defaultDepartments]
+  }
+
+  try {
+    const parsed = JSON.parse(saved) as string[]
+    return Array.isArray(parsed) && parsed.length > 0
+      ? Array.from(new Set([...defaultDepartments, ...parsed.map((item) => item.trim()).filter(Boolean)]))
+      : [...defaultDepartments]
+  } catch {
+    return [...defaultDepartments]
+  }
+}
+
 function normalizeColumn(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]/g, '')
 }
@@ -192,14 +214,14 @@ function getCell(row: Record<string, unknown>, columns: string[]) {
   return key ? String(row[key] ?? '').trim() : ''
 }
 
-function normalizeDepartment(value: string): Department {
-  const found = departments.find(
+function normalizeDepartment(value: string, availableDepartments: readonly string[] = defaultDepartments) {
+  const found = availableDepartments.find(
     (department) => normalizeColumn(department) === normalizeColumn(value),
   )
   return found ?? 'Front Office'
 }
 
-function parseEmployeeRows(rows: Record<string, unknown>[]) {
+function parseEmployeeRows(rows: Record<string, unknown>[], availableDepartments: string[]) {
   return rows
     .map((row, index): Employee | null => {
       const fullName = getCell(row, ['Full Name', 'Name', 'Employee Name', 'Employee'])
@@ -212,7 +234,7 @@ function parseEmployeeRows(rows: Record<string, unknown>[]) {
           getCell(row, ['Employee ID', 'EmployeeId', 'Staff ID', 'StaffId', 'ID', 'Code']) ||
           `EMP-${String(index + 1).padStart(4, '0')}`,
         fullName,
-        department: normalizeDepartment(getCell(row, ['Department', 'Dept', 'Division'])),
+        department: normalizeDepartment(getCell(row, ['Department', 'Dept', 'Division']), availableDepartments),
         /*role: getCell(row, ['Role', 'Position', 'Job Title', 'Title']) || 'Team Member',*/
         phone: getCell(row, ['Phone', 'Telephone', 'Mobile', 'Contact']),
         email: getCell(row, ['Email', 'Email Address', 'Work Email']),
@@ -235,72 +257,61 @@ function downloadBlob(filename: string, content: BlobPart, type: string) {
 }
 
 function buildExcelReport(registrations: Registration[], date: string, preferences: Preferences) {
-  const rows = registrations
-    .map(
-      (item, index) => `
-        <tr>
-          <td>${index + 1}</td>
-          <td>${escapeHtml(item.employeeId ?? '')}</td>
-          <td>${escapeHtml(item.fullName)}</td>
-          <td>${escapeHtml(item.department)}</td>
-          <td>${escapeHtml(item.phone)}</td>
-          <td>${escapeHtml(item.registeredAt)}</td>
-        </tr>`,
-    )
-    .join('')
+  const rows: (string | number)[][] = [
+    ['RADISSON BLU', '', '', '', '', ''],
+    [preferences.hotelName, '', '', '', '', ''],
+    ['DAILY REGISTRATION REPORT', '', '', '', '', ''],
+    ['PEOPLE & CULTURE | OFFICIAL DAILY RECORD', '', '', '', '', ''],
+    [],
+    ['REPORT DATE', formatDate(date), 'PREPARED BY', preferences.officerName, 'TOTAL REGISTERED', registrations.length],
+    [],
+    ['#', 'EMPLOYEE ID', 'FULL NAME', 'DEPARTMENT', 'PHONE', 'REGISTERED AT'],
+    ...registrations.map((item, index) => [
+      index + 1,
+      item.employeeId ?? '',
+      item.fullName,
+      item.department,
+      item.phone,
+      item.registeredAt,
+    ]),
+  ]
 
-  return `
-    <html>
-      <head>
-        <meta charset="utf-8" />
-        <style>
-          body { font-family: Arial, sans-serif; }
-          h1 { color: #13294b; }
-          table { border-collapse: collapse; width: 100%; }
-          th { background: #13294b; color: #fff; }
-          th, td { border: 1px solid #d9dee8; padding: 8px; text-align: left; }
-        </style>
-      </head>
-      <body>
-        <h1>${escapeHtml(preferences.hotelName)} Daily Registration Report</h1>
-        <p>Date: ${escapeHtml(formatDate(date))}</p>
-        <p>Prepared by: ${escapeHtml(preferences.officerName)}</p>
-        <p>Total registrations: ${registrations.length}</p>
-        <table>
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Employee ID</th>
-              <th>Full name</th>
-              <th>Department</th>
-              <th>Phone</th>
-              <th>Registered at</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </body>
-    </html>`
+  const worksheet = XLSX.utils.aoa_to_sheet(rows)
+  worksheet['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } },
+    { s: { r: 2, c: 0 }, e: { r: 2, c: 5 } },
+    { s: { r: 3, c: 0 }, e: { r: 3, c: 5 } },
+  ]
+  worksheet['!cols'] = [
+    { wch: 7 },
+    { wch: 18 },
+    { wch: 30 },
+    { wch: 25 },
+    { wch: 18 },
+    { wch: 18 },
+  ]
+  worksheet['!rows'] = [
+    { hpt: 30 },
+    { hpt: 24 },
+    { hpt: 22 },
+    { hpt: 18 },
+    { hpt: 10 },
+    { hpt: 24 },
+    { hpt: 10 },
+    { hpt: 24 },
+  ]
+
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Daily Report')
+  return XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
 }
 
 function buildPdfReport(registrations: Registration[], date: string, preferences: Preferences) {
-  const lines = [
-    `${preferences.hotelName} Daily Registration Report`,
-    `Date: ${formatDate(date)}`,
-    `Prepared by: ${preferences.officerName}`,
-    `Total registrations: ${registrations.length}`,
-    '',
-    'Employee ID | Name | Department | Time',
-    ...registrations.map(
-      (item) =>
-        `${item.employeeId ?? '-'} | ${item.fullName} | ${item.department} || 'Team Member'} | ${item.registeredAt}`,
-    ),
-  ]
-
-  const pageLines = 35
+  const rowsPerPage = 20
   const pages = Array.from(
-    { length: Math.max(1, Math.ceil(lines.length / pageLines)) },
-    (_, index) => lines.slice(index * pageLines, (index + 1) * pageLines),
+    { length: Math.max(1, Math.ceil(registrations.length / rowsPerPage)) },
+    (_, index) => registrations.slice(index * rowsPerPage, (index + 1) * rowsPerPage),
   )
 
   const objects: string[] = []
@@ -313,17 +324,40 @@ function buildPdfReport(registrations: Registration[], date: string, preferences
   const pageObjectIds: number[] = []
 
   pages.forEach((page, pageIndex) => {
+    const tableTop = 388
+    const rowHeight = 20
     const stream = [
-      'BT',
-      '/F1 13 Tf',
-      '54 548 Td',
-      ...page.map((line, lineIndex) => {
-        const prefix = lineIndex === 0 ? '' : '0 -15 Td '
-        return `${prefix}(${escapePdfText(line.slice(0, 92))}) Tj`
-      }),
-      '0 -28 Td',
-      `/F1 9 Tf (Page ${pageIndex + 1} of ${pages.length}) Tj`,
+      'q',
+      '0.075 0.161 0.294 rg 54 496 684 62 re f',
+      '0.776 0.612 0.314 rg 54 490 684 6 re f',
+      '1 1 1 rg',
+      'BT /F1 20 Tf 72 530 Td (RADISSON BLU) Tj ET',
+      'BT /F1 9 Tf 72 512 Td (PEOPLE & CULTURE  |  OFFICIAL DAILY RECORD) Tj ET',
+      'BT /F1 15 Tf 72 460 Td',
+      `(${escapePdfText(preferences.hotelName)} Daily Registration Report) Tj`,
       'ET',
+      '0.96 0.94 0.90 rg 54 420 684 30 re f',
+      '0.075 0.161 0.294 rg',
+      'BT /F1 9 Tf 72 438 Td',
+      `(${escapePdfText(formatDate(date))}    |    Prepared by: ${escapePdfText(preferences.officerName)}    |    ${registrations.length} registrations) Tj`,
+      'ET',
+      '0.075 0.161 0.294 rg 54 388 684 24 re f',
+      '1 1 1 rg',
+      'BT /F1 9 Tf 64 396 Td (EMPLOYEE ID) Tj 170 0 Td (FULL NAME) Tj 390 0 Td (DEPARTMENT) Tj 590 0 Td (TIME) Tj ET',
+      ...page.flatMap((item, rowIndex) => {
+        const y = tableTop - rowIndex * rowHeight
+        const fill = rowIndex % 2 === 0 ? '0.98 0.99 1 rg' : '1 1 1 rg'
+        return [
+          fill,
+          `54 ${y - 20} 684 20 re f`,
+          '0.85 0.88 0.93 RG 54 ' + (y - 20) + ' 684 20 re S',
+          '0.15 0.21 0.30 rg',
+          `BT /F1 9 Tf 64 ${y - 13} Td (${escapePdfText((item.employeeId ?? '-').slice(0, 18))}) Tj 106 0 Td (${escapePdfText(item.fullName.slice(0, 30))}) Tj 220 0 Td (${escapePdfText(item.department.slice(0, 24))}) Tj 200 0 Td (${escapePdfText(item.registeredAt)}) Tj ET`,
+        ]
+      }),
+      '0.37 0.43 0.54 rg',
+      `BT /F1 8 Tf 54 48 Td (Page ${pageIndex + 1} of ${pages.length}  |  Generated by ${escapePdfText(preferences.hotelName)} HR Registration) Tj ET`,
+      'Q',
     ].join('\n')
     const contentObject = addObject(
       `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
@@ -369,7 +403,9 @@ function App() {
   const [selectedDate, setSelectedDate] = useState(today)
   const [registrations, setRegistrations] = useState<Registration[]>(loadRegistrations)
   const [employees, setEmployees] = useState<Employee[]>(loadEmployees)
+  const [departments, setDepartments] = useState<string[]>(loadDepartments)
   const [form, setForm] = useState<RegistrationForm>(emptyForm(today))
+  const [employeeDraft, setEmployeeDraft] = useState<Employee>(() => emptyEmployee(loadDepartments()[0]))
   const [preferences, setPreferences] = useState<Preferences>(loadPreferences)
   const [isSignedIn, setIsSignedIn] = useState(() => localStorage.getItem('radisson-session') === 'active')
   const [loginName, setLoginName] = useState(preferences.officerName)
@@ -380,6 +416,8 @@ function App() {
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('')
   const [registrationNotice, setRegistrationNotice] = useState('')
   const [importNotice, setImportNotice] = useState('')
+  const [departmentName, setDepartmentName] = useState('')
+  const [directoryNotice, setDirectoryNotice] = useState('')
   const [syncNotice, setSyncNotice] = useState('')
   const [syncState, setSyncState] = useState(isSupabaseEnabled() ? 'Connecting to Supabase...' : 'Offline mode')
 
@@ -474,10 +512,10 @@ function App() {
       departments.map((department) => ({
         department,
         total:
-          employeeBase[department] +
+          (employeeBase[department] ?? 0) +
           registrations.filter((item) => item.department === department).length,
       })),
-    [registrations],
+    [departments, registrations],
   )
 
   const dailyDepartmentTotals = useMemo(
@@ -486,7 +524,7 @@ function App() {
         department,
         total: dailyRegistrations.filter((item) => item.department === department).length,
       })),
-    [dailyRegistrations],
+    [dailyRegistrations, departments],
   )
 
   const filteredEmployees = useMemo(() => {
@@ -613,7 +651,7 @@ function App() {
         defval: '',
       })
     })
-    const importedEmployees = parseEmployeeRows(rows)
+    const importedEmployees = parseEmployeeRows(rows, departments)
 
     if (importedEmployees.length === 0) {
       const firstSheetName = workbook.SheetNames[0] ?? 'Unknown sheet'
@@ -634,6 +672,49 @@ function App() {
     saveEmployees(importedEmployees, file, file.name)
     setImportNotice(`${importedEmployees.length} employees imported from ${file.name}.`)
     event.target.value = ''
+  }
+
+  const handleAddDepartment = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const name = departmentName.trim()
+    if (!name) {
+      setDirectoryNotice('Enter a department name before saving.')
+      return
+    }
+    if (departments.some((department) => department.toLowerCase() === name.toLowerCase())) {
+      setDirectoryNotice('That department already exists.')
+      return
+    }
+
+    const nextDepartments = [...departments, name]
+    setDepartments(nextDepartments)
+    localStorage.setItem('radisson-departments', JSON.stringify(nextDepartments))
+    setDepartmentName('')
+    setEmployeeDraft((draft) => ({ ...draft, department: name }))
+    setDirectoryNotice(`${name} department added successfully.`)
+  }
+
+  const handleAddEmployee = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const employeeId = employeeDraft.employeeId.trim()
+    const fullName = employeeDraft.fullName.trim()
+    const email = employeeDraft.email.trim()
+
+    if (!employeeId || !fullName || !employeeDraft.department) {
+      setDirectoryNotice('Employee ID, full name, and department are required.')
+      return
+    }
+    if (employees.some((employee) => employee.employeeId.toLowerCase() === employeeId.toLowerCase())) {
+      setDirectoryNotice('That employee ID already exists.')
+      return
+    }
+
+    saveEmployees([
+      ...employees,
+      { ...employeeDraft, employeeId, fullName, email, phone: employeeDraft.phone.trim() },
+    ])
+    setEmployeeDraft(emptyEmployee(employeeDraft.department))
+    setDirectoryNotice(`${fullName} added to the employee directory.`)
   }
 
   const handleLogin = (event: FormEvent<HTMLFormElement>) => {
@@ -725,9 +806,9 @@ function App() {
 
   const downloadExcel = () => {
     downloadBlob(
-      `radisson-daily-registration-${selectedDate}.xls`,
+      `radisson-daily-registration-${selectedDate}.xlsx`,
       buildExcelReport(dailyRegistrations, selectedDate, preferences),
-      'application/vnd.ms-excel;charset=utf-8',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     )
   }
 
@@ -1130,6 +1211,17 @@ function App() {
                   </button>
                 </div>
               </div>
+              <div className="report-brand">
+                <img src="/Logo.jpeg" alt="Radisson Blu logo" />
+                <div>
+                  <strong>{preferences.hotelName}</strong>
+                  <span>People &amp; Culture · Daily attendance intelligence</span>
+                </div>
+                <div className="report-brand-total">
+                  <strong>{dailyRegistrations.length}</strong>
+                  <span>registered</span>
+                </div>
+              </div>
 
               <div className="table-wrap">
                 <table>
@@ -1283,6 +1375,101 @@ function App() {
                   </div>
                 ))}
               </div>
+            </section>
+
+            <section className="panel settings-panel">
+              <div className="panel-heading">
+                <div>
+                  <p className="eyebrow">Organization</p>
+                  <h2>Add department</h2>
+                </div>
+                <span className="directory-count">{departments.length} departments</span>
+              </div>
+              <form className="inline-form" onSubmit={handleAddDepartment}>
+                <label>
+                  Department name
+                  <input
+                    required
+                    value={departmentName}
+                    onChange={(event) => setDepartmentName(event.target.value)}
+                    placeholder="e.g. Guest Relations"
+                  />
+                </label>
+                <button type="submit" className="primary-button">Add department</button>
+              </form>
+              <div className="department-chips">
+                {departments.map((department) => <span key={department}>{department}</span>)}
+              </div>
+            </section>
+
+            <section className="panel settings-panel">
+              <div className="panel-heading">
+                <div>
+                  <p className="eyebrow">Employee database</p>
+                  <h2>Add employee</h2>
+                </div>
+                <span className="directory-count">Required credentials</span>
+              </div>
+              <form className="employee-form" onSubmit={handleAddEmployee}>
+                <label>
+                  Employee ID *
+                  <input
+                    required
+                    value={employeeDraft.employeeId}
+                    onChange={(event) => setEmployeeDraft({ ...employeeDraft, employeeId: event.target.value })}
+                    placeholder="e.g. EMP-0021"
+                  />
+                </label>
+                <label>
+                  Full name *
+                  <input
+                    required
+                    value={employeeDraft.fullName}
+                    onChange={(event) => setEmployeeDraft({ ...employeeDraft, fullName: event.target.value })}
+                    placeholder="Employee full name"
+                  />
+                </label>
+                <label>
+                  Department *
+                  <select
+                    value={employeeDraft.department}
+                    onChange={(event) => setEmployeeDraft({ ...employeeDraft, department: event.target.value })}
+                  >
+                    {departments.map((department) => <option key={department}>{department}</option>)}
+                  </select>
+                </label>
+                <label>
+                  Phone
+                  <input
+                    type="tel"
+                    value={employeeDraft.phone}
+                    onChange={(event) => setEmployeeDraft({ ...employeeDraft, phone: event.target.value })}
+                    placeholder="+254 700 000 000"
+                  />
+                </label>
+                <label>
+                  Email
+                  <input
+                    type="email"
+                    value={employeeDraft.email}
+                    onChange={(event) => setEmployeeDraft({ ...employeeDraft, email: event.target.value })}
+                    placeholder="employee@hotel.com"
+                  />
+                </label>
+                <label>
+                  Status
+                  <select
+                    value={employeeDraft.status}
+                    onChange={(event) => setEmployeeDraft({ ...employeeDraft, status: event.target.value })}
+                  >
+                    <option>Active</option>
+                    <option>On leave</option>
+                    <option>Inactive</option>
+                  </select>
+                </label>
+                <button type="submit" className="primary-button">Save employee</button>
+              </form>
+              {directoryNotice ? <p className="form-notice">{directoryNotice}</p> : null}
             </section>
 
             <section className="panel settings-panel accent-panel">

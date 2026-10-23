@@ -719,6 +719,81 @@ label {
 
 .report-panel {
   min-width: 0;
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--gold) 12%, transparent), transparent 30%),
+    var(--surface);
+}
+
+.report-brand {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 20px;
+  padding: 18px 20px;
+  border-radius: 14px;
+  color: #ffffff;
+  background:
+    linear-gradient(110deg, rgba(19, 41, 75, 0.98), rgba(0, 127, 122, 0.94)),
+    repeating-linear-gradient(135deg, transparent 0 18px, rgba(255, 255, 255, 0.06) 18px 20px);
+  box-shadow: 0 16px 30px rgba(19, 41, 75, 0.18);
+}
+
+.report-brand::after {
+  position: absolute;
+  width: 180px;
+  height: 180px;
+  right: -66px;
+  top: -102px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  content: '';
+  box-shadow: 0 0 0 18px rgba(255, 255, 255, 0.04), 0 0 0 36px rgba(255, 255, 255, 0.03);
+}
+
+.report-brand img {
+  position: relative;
+  z-index: 1;
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.2);
+}
+
+.report-brand strong,
+.report-brand span {
+  position: relative;
+  z-index: 1;
+  display: block;
+}
+
+.report-brand strong {
+  font-size: 1.05rem;
+}
+
+.report-brand span {
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 0.8rem;
+}
+
+.report-brand-total {
+  position: relative;
+  z-index: 1;
+  margin-left: auto;
+  min-width: 86px;
+  padding-left: 16px;
+  border-left: 1px solid rgba(255, 255, 255, 0.28);
+  text-align: right;
+}
+
+.report-brand-total strong {
+  font-size: 1.5rem;
 }
 
 .export-actions {
@@ -726,9 +801,34 @@ label {
   gap: 8px;
 }
 
+.export-actions button {
+  min-height: 38px;
+  border: 1px solid var(--border);
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.export-actions button:first-child {
+  color: #ffffff;
+  border-color: #007f7a;
+  background: #007f7a;
+}
+
+.export-actions button:last-child {
+  color: #13294b;
+  border-color: #c69c50;
+  background: color-mix(in srgb, #c69c50 16%, var(--surface));
+}
+
+.export-actions button:hover {
+  border-color: var(--gold);
+  box-shadow: 0 8px 16px rgba(19, 41, 75, 0.12);
+}
+
 .table-wrap {
   width: 100%;
   overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
 }
 
 table {
@@ -745,7 +845,11 @@ td {
 }
 
 th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   color: var(--muted);
+  background: color-mix(in srgb, var(--surface-soft) 78%, var(--surface));
   font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0;
@@ -753,6 +857,18 @@ th {
 
 td {
   color: var(--text);
+}
+
+tbody tr {
+  transition: background 160ms ease, transform 160ms ease;
+}
+
+tbody tr:hover {
+  background: color-mix(in srgb, var(--teal) 7%, var(--surface));
+}
+
+tbody tr:last-child td {
+  border-bottom: 0;
 }
 
 .text-button {
@@ -812,6 +928,41 @@ td {
 
 .directory-panel {
   grid-column: span 2;
+}
+
+.inline-form,
+.employee-form {
+  display: grid;
+  gap: 12px;
+}
+
+.inline-form {
+  grid-template-columns: 1fr auto;
+  align-items: end;
+}
+
+.employee-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.employee-form button {
+  justify-self: start;
+  padding: 0 18px;
+}
+
+.department-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.department-chips span {
+  padding: 6px 9px;
+  border-radius: 999px;
+  color: var(--teal);
+  background: color-mix(in srgb, var(--teal) 10%, transparent);
+  font-size: 0.78rem;
+  font-weight: 800;
 }
 
 .directory-count {
@@ -959,5 +1110,19 @@ td {
 
   .form-row {
     grid-template-columns: 1fr;
+  }
+
+  .inline-form,
+  .employee-form {
+    grid-template-columns: 1fr;
+  }
+
+  .report-brand {
+    align-items: flex-start;
+  }
+
+  .report-brand-total {
+    margin-left: 0;
+    text-align: left;
   }
 }
